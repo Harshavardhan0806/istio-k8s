@@ -1,0 +1,163 @@
+---
+# Source: productpage/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: devops-assignment-svc
+  labels:
+    app: devops-assignment
+    chart: devops-assignment-0.1.0
+spec:
+  type: NodePort 
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: devops-assignment
+
+---
+# Source: productpage/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-assignment-production
+  labels:
+    app: devops-assignment
+    canary: "false"
+    chart: devops-assignment-0.1.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devops-assignment
+      canary: "false"
+  template:
+    metadata:
+      labels:
+        app: devops-assignment
+        canary: "false"
+    spec:
+      containers:
+        - name: devops-assignment-production
+          image: "harsha0806/demo-app-v1:v1"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+
+---
+# Source: productpage/templates/deploymentcanary.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-assignment-canary
+  labels:
+    app: devops-assignment
+    canary: "true"
+    chart: devops-assignment-0.1.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devops-assignment
+      canary: "true"
+  template:
+    metadata:
+      labels:
+        app: devops-assignment
+        canary: "true"
+    spec:
+      containers:
+        - name: devops-assignment-canary
+          image: "harsha0806/demo-app-v2:v2"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+
+---
+# Source: productpage/templates/istioDestinationRule.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: devops-assignment-destination-rule
+  labels:
+    chart: devops-assignment-0.1.0
+spec:
+  host: devops-assignment-svc.bookinfo-k8s-helm-istio-canary.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+  subsets:
+  - name: production
+    labels:
+      canary: "false"
+  - name: canary
+    labels:
+      canary: "true"
+
+---
+# Source: productpage/templates/istioGateway.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: devops-assignment-gateway
+  labels:
+    chart: devops-assignment-0.1.0
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+---
+# Source: productpage/templates/istioVirtualService.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: devops-assignment-virtual-service
+  labels:
+    chart: devops-assignment-0.1.0
+spec:
+  hosts:
+  - devops-assignment-svc.bookinfo-k8s-helm-istio-canary.svc.cluster.local
+  gateways:
+  - devops-assignment-gateway
+  http:
+  - route:
+    - destination:
+        host: devops-assignment-svc.bookinfo-k8s-helm-istio-canary.svc.cluster.local
+        subset: production
+        port:
+          number: 8080
+      weight: 0
+    - destination:
+        host: devops-assignment-svc.bookinfo-k8s-helm-istio-canary.svc.cluster.local
+        subset: canary
+        port:
+          number: 8080
+      weight: 100
