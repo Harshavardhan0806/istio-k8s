@@ -1,0 +1,30 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: {{ template "mychart.name" . }}-virtual-service
+  labels:
+    chart: {{ template "mychart.name" . }}-0.1.0
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - {{ template "mychart.name" . }}-gateway
+  http:
+  - match:
+    - uri:
+        exact: /health
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: {{ template "mychart.name" . }}
+        subset: production
+        port:
+          number: {{ .Values.service.port }}
+      weight: {{ .Values.prodDeployment.weight }}
+    - destination:
+        host: {{ template "mychart.name" . }}
+        subset: canary
+        port:
+          number: {{ .Values.service.port }}
+      weight: {{ .Values.canaryDeployment.weight }}

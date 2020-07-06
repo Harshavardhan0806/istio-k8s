@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "mychart.name" . }}
+  labels:
+{{ include "mychart.labels" . | indent 4 }}
+    app: {{ template "mychart.name" . }} 
+    service: {{ template "mychart.name" . }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "mychart.name" . }}
+    app: {{ template "mychart.name" . }}

@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "mychart.name" . }}-canary
+  labels:
+{{ include "mychart.labels" . | indent 4 }}
+    app: {{ template "mychart.name" . }}
+    version: v2
+spec:
+  replicas: {{ .Values.canaryDeployment.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ template "mychart.name" . }}
+      app: {{ template "mychart.name" . }}
+      version: v2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "mychart.name" . }}
+        app: {{ template "mychart.name" . }}
+        version: v2
+        canary: "{{ .Values.canaryDeployment.flag }}"
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ template "mychart.serviceAccountName" . }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.canaryDeployment.image.repository }}:{{ .Values.canaryDeployment.image.tag }}"
+          imagePullPolicy: {{ .Values.prodDeployment.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http

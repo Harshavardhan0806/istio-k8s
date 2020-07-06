@@ -1,14 +1,20 @@
+# Source: devops-assignment/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: devops-assignment
+  labels:
+    account: devops-assignment
 ---
-# Source: productpage/templates/service.yaml
+# Source: devops-assignment/templates/service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: devops-assignment-svc
+  name: devops-assignment
   labels:
-    app: devops-assignment
-    chart: devops-assignment-0.1.0
+    app: devops-assignment 
+    service: devops-assignment
 spec:
-  type: NodePort 
   ports:
     - port: 8080
       targetPort: http
@@ -16,31 +22,70 @@ spec:
       name: http
   selector:
     app: devops-assignment
-
 ---
-# Source: productpage/templates/deployment.yaml
+# Source: devops-assignment/templates/deployment-canary.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-assignment-canary
+  labels:
+    app: devops-assignment
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devops-assignment
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: devops-assignment
+        version: v1
+        canary: "true"
+    spec:
+      serviceAccountName: devops-assignment
+      containers:
+        - name: devops-assignment
+          image: "harsha0806/demo-app-v2:v1"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+---
+# Source: devops-assignment/templates/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: devops-assignment-production
   labels:
     app: devops-assignment
-    canary: "false"
-    chart: devops-assignment-0.1.0
+    version: v1
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: devops-assignment
-      canary: "false"
+      version: v1
   template:
     metadata:
       labels:
         app: devops-assignment
+        version: v1
         canary: "false"
     spec:
+      serviceAccountName: devops-assignment
       containers:
-        - name: devops-assignment-production
+        - name: devops-assignment-canary
           image: "harsha0806/demo-app-v1:v1"
           imagePullPolicy: IfNotPresent
           ports:
@@ -55,48 +100,8 @@ spec:
             httpGet:
               path: /health
               port: http
-
 ---
-# Source: productpage/templates/deploymentcanary.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: devops-assignment-canary
-  labels:
-    app: devops-assignment
-    canary: "true"
-    chart: devops-assignment-0.1.0
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: devops-assignment
-      canary: "true"
-  template:
-    metadata:
-      labels:
-        app: devops-assignment
-        canary: "true"
-    spec:
-      containers:
-        - name: devops-assignment-canary
-          image: "harsha0806/demo-app-v2:v2"
-          imagePullPolicy: IfNotPresent
-          ports:
-            - name: http
-              containerPort: 8080
-              protocol: TCP
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: http
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: http
-
----
-# Source: productpage/templates/istioDestinationRule.yaml
+# Source: devops-assignment/templates/istioDestinationRule.yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
 metadata:
@@ -104,7 +109,7 @@ metadata:
   labels:
     chart: devops-assignment-0.1.0
 spec:
-  host: devops-assignment-svc.bookinfo-k8s-helm-istio-canary.svc.cluster.local
+  host: devops-assignment
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
@@ -115,18 +120,15 @@ spec:
   - name: canary
     labels:
       canary: "true"
-
 ---
-# Source: productpage/templates/istioGateway.yaml
+# Source: devops-assignment/templates/istioGateway.yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: Gateway
 metadata:
   name: devops-assignment-gateway
-  labels:
-    chart: devops-assignment-0.1.0
 spec:
   selector:
-    istio: ingressgateway
+    istio: ingressgateway # use istio default controller
   servers:
   - port:
       number: 80
@@ -135,7 +137,7 @@ spec:
     hosts:
     - "*"
 ---
-# Source: productpage/templates/istioVirtualService.yaml
+# Source: devops-assignment/templates/istioVirtualService.yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: VirtualService
 metadata:
@@ -144,20 +146,25 @@ metadata:
     chart: devops-assignment-0.1.0
 spec:
   hosts:
-  - devops-assignment-svc.bookinfo-k8s-helm-istio-canary.svc.cluster.local
+  - "*"
   gateways:
   - devops-assignment-gateway
   http:
-  - route:
+  - match:
+    - uri:
+        exact: /health
+    - uri:
+        prefix: /
+    route:
     - destination:
-        host: devops-assignment-svc.bookinfo-k8s-helm-istio-canary.svc.cluster.local
+        host: devops-assignment
         subset: production
         port:
           number: 8080
-      weight: 0
+      weight: 100
     - destination:
-        host: devops-assignment-svc.bookinfo-k8s-helm-istio-canary.svc.cluster.local
+        host: devops-assignment
         subset: canary
         port:
           number: 8080
-      weight: 100
+      weight: 0
